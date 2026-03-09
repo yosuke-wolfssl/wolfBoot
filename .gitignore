@@ -347,3 +347,6 @@ image.ub
 system-default.dtb
 test_output/
 sdcard.img
+
+# vscode
+.vscode/
