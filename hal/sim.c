@@ -509,40 +509,29 @@ void do_boot(const uint32_t *app_offset)
     }
 
 #ifdef __APPLE__
-    typedef int (*main_entry)(int, char**, char**, char**);
-    NSObjectFileImage fileImage = NULL;
-    NSModule module = NULL;
-    NSSymbol symbol = NULL;
-    void *pSymbolAddress = NULL;
-    struct entry_point_command *epc;
-    main_entry main;
-    uint32_t *app_buf = (uint32_t*)app_offset;
-    uint32_t typeVal;
+    char template[] = "test_app";
+    int fd = mkstemp(template);
 
-    /* change to mh_bundle type - workaround to load object */
-    typeVal = app_buf[3];
-    if (typeVal != MH_BUNDLE)
-        app_buf[3] = MH_BUNDLE;
-
-    ret = NSCreateObjectFileImageFromMemory(app_buf, app_size, &fileImage);
-    if (ret != 1 || fileImage == NULL) {
-        wolfBoot_printf( "Error loading object memory!\n");
-        exit(-1);
-    }
-    module = NSLinkModule(fileImage, "module",
-        (NSLINKMODULE_OPTION_PRIVATE | NSLINKMODULE_OPTION_BINDNOW));
-    symbol = NSLookupSymbolInModule(module, "__mh_execute_header");
-    pSymbolAddress = NSAddressOfSymbol(symbol);
-    if (!find_epc(pSymbolAddress, &epc)) {
-        wolfBoot_printf( "Error finding entry point!\n");
+    if (fd < 0) {
+        wolfBoot_printf( "mkstemp error\n");
         exit(-1);
     }
 
-    /* restore mh_bundle type to allow hash to remain valid */
-    app_buf[3] = typeVal;
+    size_t wret = write(fd, app_offset, app_size);
+    if (wret != app_size) {
+        wolfBoot_printf( "write error\n");
+        exit(-1);
+    }
 
-    main = (main_entry)((uint8_t*)pSymbolAddress + epc->entryoff);
-    main(main_argc, main_argv, NULL, NULL);
+    fchmod(fd, 0755);
+    close(fd);
+
+    wolfBoot_printf("Executing %s\n", template);
+
+    char *envp[] = { NULL };
+    execve(template, main_argv, envp);
+
+    wolfBoot_printf( "execve error\n");
 
 #elif defined (WOLFBOOT_ELF_FLASH_SCATTER)
     uint8_t *entry_point = (sim_ram_base + (unsigned long)app_offset);
