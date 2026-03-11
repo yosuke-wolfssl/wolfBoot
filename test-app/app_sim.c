@@ -60,6 +60,41 @@ static volatile char __attribute__((used)) garbage[TEST_DELTA_DATA] = {0x01, 0x0
 
 void hal_init(void);
 
+#ifdef WOLFBOOT_TPM
+
+#define TPM2_DEMO_STORAGE_KEY_HANDLE 0x81000200
+static const char gStorageKeyAuth[] = "ThisIsMyStorageKeyAuth";
+static const char gAiKeyAuth[] =      "ThisIsMyAiKeyAuth";
+
+int getPrimaryStorageKey(WOLFTPM2_DEV* pDev, WOLFTPM2_KEY* pStorageKey){
+    int rc;
+    TPM_HANDLE handle = TPM2_DEMO_STORAGE_KEY_HANDLE;
+
+    rc = wolfTPM2_ReadPublicKey(pDev, pStorageKey, handle);
+    if (rc != 0) {
+        /* Create primary storage key */
+        rc = wolfTPM2_CreateSRK(pDev, pStorageKey, TPM_ALG_RSA,
+            (byte*)gStorageKeyAuth, sizeof(gStorageKeyAuth)-1);
+    } else {
+        /* specify auth password for storage key */
+        pStorageKey->handle.auth.size = sizeof(gStorageKeyAuth)-1;
+        XMEMCPY(pStorageKey->handle.auth.buffer, gStorageKeyAuth,
+                pStorageKey->handle.auth.size);
+    }
+
+    if ( rc != 0 ) {
+        printf("Loading SRK: Storage failed\n");
+    }
+    else {
+        printf("Loading SRK: Storage 0x%x (%d bytes)\n",
+        (word32)pStorageKey->handle.hndl, pStorageKey->pub.size);
+    }
+
+    return rc;
+}
+
+#endif
+
 int do_cmd(const char *cmd)
 {
     if (strcmp(cmd, "powerfail") == 0) {
@@ -167,9 +202,19 @@ int do_cmd(const char *cmd)
     if (strcmp(cmd, "attestation") == 0) {
         WOLFTPM2_DEV dev;
         WOLFTPM2_CAPS caps;
+        WOLFTPM2_SESSION tpmSession;
+        TPMT_PUBLIC publicTemplate;
+        TPM2B_AUTH auth;
+        WOLFTPM2_KEYBLOB newKeyBlob;
+        WOLFTPM2_KEY storage; /* SRK */
         int rc;
 
         printf("=== Attestation Test ===\n");
+
+        XMEMSET(&tpmSession, 0, sizeof(tpmSession));
+        XMEMSET(&storage, 0, sizeof(storage));
+        XMEMSET(&auth, 0, sizeof(auth));
+        XMEMSET(&newKeyBlob, 0, sizeof(newKeyBlob));
         
         rc = wolfTPM2_Init(&dev, NULL, NULL);
         if (rc == 0)  {
@@ -184,6 +229,36 @@ int do_cmd(const char *cmd)
         } else {
             printf("GetCapabilities failed\n");
             return -1;
+        }
+
+        /* Generate or Read Storage Root Key */
+        rc = getPrimaryStorageKey(&dev, &storage);
+
+        if ( rc == 0 ) {
+            /* Generate AIK */
+            rc = wolfTPM2_GetKeyTemplate_RSA_AIK(&publicTemplate);
+            auth.size = (int)sizeof(gAiKeyAuth)-1;
+            XMEMCPY(auth.buffer, gAiKeyAuth, auth.size);
+        }
+
+        if ( rc == 0 ) {
+            printf("Creating new key...\n");
+            rc = wolfTPM2_CreateKey(&dev, &newKeyBlob, &storage.handle,
+                            &publicTemplate, auth.buffer, auth.size);
+        }
+
+        if (rc != TPM_RC_SUCCESS) {
+            printf("wolfTPM2_CreateKey failed\n");
+            return -1;
+        } else {
+            rc = wolfTPM2_LoadKey(&dev, &newKeyBlob, &storage.handle);
+        }
+        if (rc != TPM_RC_SUCCESS) {
+            printf("wolfTPM2_LoadKey failed\n");
+            return -1;
+        } else {
+            printf("New key created and loaded (pub %d, priv %d bytes)\n",
+            newKeyBlob.pub.size, newKeyBlob.priv.size);
         }
 
         rc = wolfTPM2_Cleanup(&dev);
