@@ -204,8 +204,7 @@ int do_cmd(const char *cmd)
         WOLFTPM2_CAPS caps;
         WOLFTPM2_SESSION tpmSession;
         TPMT_PUBLIC publicTemplate;
-        TPM2B_AUTH auth;
-        WOLFTPM2_KEYBLOB newKeyBlob;
+        WOLFTPM2_KEY aikKey;
         WOLFTPM2_KEY storage; /* SRK */
         int rc;
 
@@ -213,8 +212,7 @@ int do_cmd(const char *cmd)
 
         XMEMSET(&tpmSession, 0, sizeof(tpmSession));
         XMEMSET(&storage, 0, sizeof(storage));
-        XMEMSET(&auth, 0, sizeof(auth));
-        XMEMSET(&newKeyBlob, 0, sizeof(newKeyBlob));
+        XMEMSET(&aikKey, 0, sizeof(aikKey));
         
         rc = wolfTPM2_Init(&dev, NULL, NULL);
         if (rc == 0)  {
@@ -236,29 +234,17 @@ int do_cmd(const char *cmd)
 
         if ( rc == 0 ) {
             /* Generate AIK */
-            rc = wolfTPM2_GetKeyTemplate_RSA_AIK(&publicTemplate);
-            auth.size = (int)sizeof(gAiKeyAuth)-1;
-            XMEMCPY(auth.buffer, gAiKeyAuth, auth.size);
-        }
-
-        if ( rc == 0 ) {
             printf("Creating new key...\n");
-            rc = wolfTPM2_CreateKey(&dev, &newKeyBlob, &storage.handle,
-                            &publicTemplate, auth.buffer, auth.size);
+            rc = wolfTPM2_CreateAndLoadAIK(&dev, &aikKey, TPM_ALG_RSA,
+                                           &storage,  (byte*)gAiKeyAuth, sizeof(gAiKeyAuth)-1);
         }
 
         if (rc != TPM_RC_SUCCESS) {
-            printf("wolfTPM2_CreateKey failed\n");
+            printf("wolfTPM2_CreateAndLoadAIK failed\n");
             return -1;
         } else {
-            rc = wolfTPM2_LoadKey(&dev, &newKeyBlob, &storage.handle);
-        }
-        if (rc != TPM_RC_SUCCESS) {
-            printf("wolfTPM2_LoadKey failed\n");
-            return -1;
-        } else {
-            printf("New key created and loaded (pub %d, priv %d bytes)\n",
-            newKeyBlob.pub.size, newKeyBlob.priv.size);
+            printf("New key created and loaded (pub %d bytes)\n",
+            aikKey.pub.size);
         }
 
         rc = wolfTPM2_Cleanup(&dev);
