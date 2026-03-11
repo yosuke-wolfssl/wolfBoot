@@ -181,6 +181,15 @@ int do_cmd(const char *cmd)
             "FIPS 140-2 %d, CC-EAL4 %d\n",
             caps.mfgStr, caps.mfg, caps.vendorStr, caps.fwVerMajor,
             caps.fwVerMinor, caps.fwVerVendor, caps.fips140_2, caps.cc_eal4);
+        } else {
+            printf("GetCapabilities failed\n");
+            return -1;
+        }
+
+        rc = wolfTPM2_Cleanup(&dev);
+        if (rc != TPM_RC_SUCCESS) {
+            printf("Failed to clean up\n");
+            return -1;
         }
 
         return 0;
