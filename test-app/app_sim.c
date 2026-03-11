@@ -33,6 +33,11 @@
 #include "image.h"
 #endif
 
+#ifdef WOLFBOOT_TPM
+#include "wolftpm/tpm2.h"
+#include "wolftpm/tpm2_wrap.h"
+#endif
+
 #ifdef DUALBANK_SWAP
 uint32_t hal_sim_get_dualbank_state(void);
 #endif
@@ -155,6 +160,29 @@ int do_cmd(const char *cmd)
         printf("verify_authenticity: OK\n");
 
         printf("=== Self-header verification PASSED ===\n");
+        return 0;
+    }
+#endif
+#ifdef WOLFBOOT_TPM
+    if (strcmp(cmd, "attestation") == 0) {
+        WOLFTPM2_DEV dev;
+        WOLFTPM2_CAPS caps;
+        int rc;
+
+        printf("=== Attestation Test ===\n");
+        
+        rc = wolfTPM2_Init(&dev, NULL, NULL);
+        if (rc == 0)  {
+        /* Get device capabilities + options */
+        rc = wolfTPM2_GetCapabilities(&dev, &caps);
+        }
+        if (rc == 0) {
+            printf("Mfg %s (%d), Vendor %s, Fw %u.%u (0x%x), "
+            "FIPS 140-2 %d, CC-EAL4 %d\n",
+            caps.mfgStr, caps.mfg, caps.vendorStr, caps.fwVerMajor,
+            caps.fwVerMinor, caps.fwVerVendor, caps.fips140_2, caps.cc_eal4);
+        }
+
         return 0;
     }
 #endif

@@ -350,3 +350,6 @@ sdcard.img
 
 # vscode
 .vscode/
+
+#generated if sim on Mac
+test_app

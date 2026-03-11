@@ -4,6 +4,7 @@
 -include ./wcs/pkcs11.mk
 
 WOLFBOOT_LIB_WOLFSSL?=../lib/wolfssl
+WOLFBOOT_LIB_WOLFTPM?=../lib/wolfTPM
 WOLFSSL_LOCAL_OBJDIR?=wolfssl_obj
 vpath %.c $(WOLFBOOT_LIB_WOLFSSL)
 vpath %.S $(WOLFBOOT_LIB_WOLFSSL)
@@ -490,6 +491,34 @@ ifeq ($(TARGET),sim)
   else
     APP_OBJS=app_sim.o
     APP_OBJS+=../test-app/libwolfboot.o ../hal/$(TARGET).o
+  endif
+  ifeq ($(WOLFTPM),1)
+    CFLAGS+=-I$(WOLFBOOT_LIB_WOLFTPM) -D"WOLFBOOT_TPM"
+    CFLAGS+=-D"WOLFTPM_SMALL_STACK" -D"WOLFTPM_AUTODETECT"
+    CFLAGS+=-DWOLFTPM_SWTPM -DTPM_TIMEOUT_TRIES=0 -DHAVE_NETDB_H -DHAVE_UNISTD_H
+    APP_OBJS+=$(WOLFBOOT_LIB_WOLFTPM)/src/tpm2.o \
+              $(WOLFBOOT_LIB_WOLFTPM)/src/tpm2_packet.o \
+              $(WOLFBOOT_LIB_WOLFTPM)/src/tpm2_tis.o \
+              $(WOLFBOOT_LIB_WOLFTPM)/src/tpm2_wrap.o \
+              $(WOLFBOOT_LIB_WOLFTPM)/src/tpm2_param_enc.o \
+              $(WOLFBOOT_LIB_WOLFTPM)/src/tpm2_swtpm.o
+    APP_OBJS+=$(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/hash.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/sha256.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/sha512.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/wc_port.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/ecc.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/asn.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/coding.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/memory.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/logging.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/wolfmath.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/sp_int.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/sp_c32.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/tfm.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/wc_encrypt.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/aes.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/hmac.o \
+              $(WOLFBOOT_LIB_WOLFSSL)/wolfcrypt/src/random.o
   endif
 endif
 
