@@ -206,6 +206,14 @@ int do_cmd(const char *cmd)
         TPMT_PUBLIC publicTemplate;
         WOLFTPM2_KEY aikKey;
         WOLFTPM2_KEY storage; /* SRK */
+        union {
+        Quote_In quoteAsk;
+        byte maxInput[MAX_COMMAND_SIZE];
+        } cmdIn;
+        union {
+        Quote_Out quoteResult;
+        byte maxOutput[MAX_RESPONSE_SIZE];
+        } cmdOut;
         int rc;
 
         printf("=== Attestation Test ===\n");
@@ -246,6 +254,26 @@ int do_cmd(const char *cmd)
             printf("New key created and loaded (pub %d bytes)\n",
             aikKey.pub.size);
         }
+
+        /* Set the handle of AIK */ 
+        wolfTPM2_SetAuthHandle(&dev, 0, &aikKey.handle); 
+
+        /* Prepare Quote request */
+        XMEMSET(&cmdIn.quoteAsk, 0, sizeof(cmdIn.quoteAsk));
+        XMEMSET(&cmdOut.quoteResult, 0, sizeof(cmdOut.quoteResult));
+        cmdIn.quoteAsk.signHandle = aikKey.handle.hndl;
+        cmdIn.quoteAsk.inScheme.scheme = TPM_ALG_RSASSA;
+        cmdIn.quoteAsk.inScheme.details.any.hashAlg = TPM_ALG_SHA256;
+        cmdIn.quoteAsk.qualifyingData.size = 0; /* optional */
+        /* Choose PCR for signing */
+        TPM2_SetupPCRSel(&cmdIn.quoteAsk.PCRselect, TPM_ALG_SHA256, 16);
+
+        rc = TPM2_Quote(&cmdIn.quoteAsk, &cmdOut.quoteResult);
+        if (rc != TPM_RC_SUCCESS) {
+            printf("TPM2_Quote failed 0x%x: %s\n", rc, TPM2_GetRCString(rc));
+            return -1;
+        }
+        printf("Quote success\n");
 
         rc = wolfTPM2_Cleanup(&dev);
         if (rc != TPM_RC_SUCCESS) {
