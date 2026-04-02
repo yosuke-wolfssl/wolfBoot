@@ -1,7 +1,7 @@
 MEMORY
 {
     FLASH (rx) : ORIGIN = 0x10000000, LENGTH = @BOOTLOADER_PARTITION_SIZE@
-    RAM (rwx)  : ORIGIN = 0x20000000, LENGTH = 128K
+    RAM (rwx)  : ORIGIN = 0x30000000, LENGTH = 128K
 }
 
 SECTIONS
@@ -32,6 +32,7 @@ SECTIONS
     .data : AT (_stored_data)
     {
         _start_data = .;
+        KEEP(*(.ramcode*))
         KEEP(*(.data*))
         . = ALIGN(4);
         _end_data = .;

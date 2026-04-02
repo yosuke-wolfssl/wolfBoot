@@ -35,6 +35,7 @@
 #include "fsl_reset.h"
 #include "loader.h"
 #include "PERI_AHBSC.h"
+#include "printf.h"
 
 #ifdef TZEN
 #include "hal/armv8m_tz.h"
@@ -48,6 +49,12 @@ int hal_trng_get_entropy(unsigned char *out, unsigned int len);
 static flash_config_t pflash;
 static uint32_t pflash_sector_size = WOLFBOOT_SECTOR_SIZE;
 uint32_t SystemCoreClock;
+
+/* The MCXN947 ROM flash API uses 0-based flash addresses (offsets from flash
+ * start), but wolfBoot configures physical addresses (0x10000000-based).
+ * This mask strips the top nibble, matching FLASH_ADDR_MASK in fsl_k4_flash.c.
+ */
+#define FLASH_ROM_ADDR(a)  ((a) & 0x0FFFFFFFU)
 
 #ifdef TZEN
 static void hal_sau_init(void)
@@ -100,10 +107,17 @@ void hal_init(void)
 #endif
 
 #if defined(__WOLFBOOT) || !defined(TZEN)
-    memset(&pflash, 0, sizeof(pflash));
-    FLASH_Init(&pflash);
-    FLASH_GetProperty(&pflash, kFLASH_PropertyPflashSectorSize,
-            &pflash_sector_size);
+    {
+        status_t ret;
+        memset(&pflash, 0, sizeof(pflash));
+        ret = FLASH_Init(&pflash);
+        wolfBoot_printf("FLASH_Init: %d\n", (int)ret);
+        wolfBoot_printf("PFlashBlockBase=0x%x TotalSize=0x%x\n",
+                        pflash.PFlashBlockBase, pflash.PFlashTotalSize);
+        FLASH_GetProperty(&pflash, kFLASH_PropertyPflashSectorSize,
+                &pflash_sector_size);
+        wolfBoot_printf("PFlashSectorSize=0x%x\n", pflash_sector_size);
+    }
 #endif
 
 #if defined(TZEN) && !defined(NONSECURE_APP)
@@ -150,7 +164,7 @@ int RAMFUNCTION hal_flash_write(uint32_t address, const uint8_t *data, int len)
 
             memcpy(&word, (void *)aligned, word_size);
             memcpy(((uint8_t *)&word) + offset, data + written, copy);
-            if (FLASH_Program(&pflash, aligned, (uint8_t *)&word, word_size) !=
+            if (FLASH_Program(&pflash, FLASH_ROM_ADDR(aligned), (uint8_t *)&word, word_size) !=
                 kStatus_FLASH_Success) {
                 return -1;
             }
@@ -162,7 +176,7 @@ int RAMFUNCTION hal_flash_write(uint32_t address, const uint8_t *data, int len)
         else {
             uint32_t chunk = (uint32_t)len & ~(word_size - 1U);
 
-            if (FLASH_Program(&pflash, address, (uint8_t *)data + written,
+            if (FLASH_Program(&pflash, FLASH_ROM_ADDR(address), (uint8_t *)data + written,
                               chunk) != kStatus_FLASH_Success) {
                 return -1;
             }
@@ -187,6 +201,7 @@ void RAMFUNCTION hal_flash_lock(void)
 int RAMFUNCTION hal_flash_erase(uint32_t address, int len)
 {
     uint32_t sector_size = pflash_sector_size;
+    status_t ret;
 
     if (sector_size == 0U) {
         sector_size = WOLFBOOT_SECTOR_SIZE;
@@ -197,12 +212,16 @@ int RAMFUNCTION hal_flash_erase(uint32_t address, int len)
     }
 
     while (len > 0) {
-        if (FLASH_Erase(&pflash, address, sector_size,
-                        kFLASH_ApiEraseKey) != kStatus_FLASH_Success) {
+        ret = FLASH_Erase(&pflash, FLASH_ROM_ADDR(address), sector_size, kFLASH_ApiEraseKey);
+        if (ret != kStatus_FLASH_Success) {
+            wolfBoot_printf("FLASH_Erase(0x%x, %u) failed: %d\n",
+                            address, sector_size, (int)ret);
             return -1;
         }
-        if (FLASH_VerifyErase(&pflash, address, sector_size) !=
-            kStatus_FLASH_Success) {
+        ret = FLASH_VerifyErase(&pflash, FLASH_ROM_ADDR(address), sector_size);
+        if (ret != kStatus_FLASH_Success) {
+            wolfBoot_printf("FLASH_VerifyErase(0x%x, %u) failed: %d\n",
+                            address, sector_size, (int)ret);
             return -1;
         }
         address += sector_size;
