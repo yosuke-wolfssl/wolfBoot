@@ -69,7 +69,7 @@ static void hal_sau_init(void)
             0);
 
     /* Non-secure RAM */
-    sau_init_region(2, 0x20000000, 0x2004FFFF, 0);
+    sau_init_region(2, 0x20016000, 0x20065FFF, 0);
 
     /* Peripherals */
     sau_init_region(3, 0x40000000, 0x4005FFFF, 0);
