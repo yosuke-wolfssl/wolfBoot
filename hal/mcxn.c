@@ -69,7 +69,7 @@ static void hal_sau_init(void)
             0);
 
     /* Non-secure RAM */
-    sau_init_region(2, 0x20020000, 0x20025FFF, 0);
+    sau_init_region(2, 0x20000000, 0x2004FFFF, 0);
 
     /* Peripherals */
     sau_init_region(3, 0x40000000, 0x4005FFFF, 0);
@@ -92,6 +92,14 @@ static void periph_unsecure(void)
 
     GPIO_EnablePinControlNonSecure(GPIO0, (1UL << 10) | (1UL << 27));
     GPIO_EnablePinControlNonSecure(GPIO1, (1UL << 2) | (1UL << 8) | (1UL << 9));
+
+    /* Disable GDET for voltage configuration on app */
+    GDET0->GDET_ENABLE1 = 0;
+    GDET1->GDET_ENABLE1 = 0;
+
+    /* Configure ENET IRQs as non-secure */
+    NVIC->ITNS[4] |= (1UL << 11) | (1UL << 12) | (1UL << 13);
+
 }
 #endif
 

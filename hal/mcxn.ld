@@ -1,8 +1,8 @@
 MEMORY
 {
-    FLASH (rx) :          ORIGIN = 0x00000000, LENGTH = @WOLFBOOT_KEYVAULT_ADDRESS@ - @ARCH_FLASH_OFFSET@
-    RAM (rwx) :           ORIGIN = 0x30000000, LENGTH = 0x10000 /* 64K */
-    RAM_HEAP (rwx) :      ORIGIN = 0x30010000, LENGTH = 0xE000 /* 56K */
+    FLASH (rx) :          ORIGIN = 0x10000000, LENGTH = @WOLFBOOT_KEYVAULT_ADDRESS@ - @ARCH_FLASH_OFFSET@
+    RAM (rwx) :           ORIGIN = 0x30000000, LENGTH = 0x20000 /* 128K */
+    RAM_HEAP (rwx) :      ORIGIN = 0x30020000, LENGTH = 0xE000 /* 56K */
     FLASH_KEYVAULT (rw) : ORIGIN = @WOLFBOOT_KEYVAULT_ADDRESS@, LENGTH = @WOLFBOOT_KEYVAULT_SIZE@
     FLASH_NSC (rx) :      ORIGIN = @WOLFBOOT_NSC_ADDRESS@, LENGTH = @WOLFBOOT_NSC_SIZE@
 }
@@ -43,6 +43,7 @@ SECTIONS
     .data : AT (_stored_data)
     {
         _start_data = .;
+        KEEP(*(.ramcode*))
         KEEP(*(.data*))
         . = ALIGN(4);
         _end_data = .;
