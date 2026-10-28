@@ -88,6 +88,10 @@ void hal_led_on(void)
     /* RX71M RSK+ LED0 P03 */
     PORT_PDR(0) |= (1 << 3);   /* output */
     PORT_PODR(0) &= ~(1 << 3); /* low */
+#elif defined(TARGET_rx24t)
+    /* RX24T RSK LED PB3 P32 */
+    PORT_PDR(11) |= (1 << 3);   /* output */
+    PORT_PODR(11) &= ~(1 << 3); /* low */
 #endif
 }
 
@@ -105,6 +109,10 @@ void hal_led_off(void)
     /* RX71M RSK+ LED0 P03 */
     PORT_PDR(0) |= (1 << 3);  /* output */
     PORT_PODR(0) |= (1 << 3); /* high */
+#elif defined(TARGET_rx24t)
+    /* RX24T RSK LED PB3 P32 */
+    PORT_PDR(11) |= (1 << 3);  /* output */
+    PORT_PODR(11) |= (1 << 3); /* high */
 #endif
 }
 #endif
@@ -143,6 +151,9 @@ static flash_err_t flash_check_error()
     #elif defined(TARGET_rx71m)
         /* SCI7: TXD7/P90, RXD7/P92 (RSK+ USB serial) */
         #define DEBUG_UART_SCI 7
+    #elif defined(TARGET_rx24t)
+        /* SCI1: TXD1/PD3, RXD1/PD5 */
+        #define DEBUG_UART_SCI 1
     #else
         /* SCI8: TXD8/PJ2, RXD8/PJ1 */
         #define DEBUG_UART_SCI 8
@@ -150,6 +161,14 @@ static flash_err_t flash_check_error()
 #endif
 #ifndef DEBUG_BAUD_RATE
 #define DEBUG_BAUD_RATE 115200
+#endif
+#ifdef TARGET_rx24t
+/* Rounded BRR for the /8 divider (ABCS=1, BGDM=1, CKS=0) */
+#define DEBUG_UART_BRR \
+    (((PCLKB + (4 * DEBUG_BAUD_RATE)) / (8 * DEBUG_BAUD_RATE)) - 1)
+#if DEBUG_UART_BRR > 255
+    #error DEBUG_BAUD_RATE too low for the RX24T SCI divider: BRR exceeds 255
+#endif
 #endif
 
 void uart_init(void)
@@ -176,6 +195,9 @@ void uart_init(void)
 #elif defined(TARGET_rx71m)
     /* PFS may only change while PMR is 0 */
     PORT_PMR(0x9) &= ~((1 << 0) | (1 << 2));
+#elif defined(TARGET_rx24t)
+    /* PFS may only change while PMR is 0 */
+    PORT_PMR(0xD) &= ~((1 << 3) | (1 << 5));
 #else
     /* Configure PJ1/PJ2 for UART */
     PORT_PMR(0x12) |= ((1 << 1) | (1 << 2));
@@ -193,6 +215,9 @@ void uart_init(void)
 #elif defined(TARGET_rx71m)
     MPC_PFS(0x48) = 0xA; /* P90-TXD7 */
     MPC_PFS(0x4A) = 0xA; /* P92-RXD7 */
+#elif defined(TARGET_rx24t)
+    MPC_PFS(0x6B) = 0xA; /* PD3-TXD1 */
+    MPC_PFS(0x6D) = 0xA; /* PD5-RXD1 */
 #else
     MPC_PFS(0xF1) = 0xA; /* PJ1-RXD8 */
     MPC_PFS(0xF2) = 0xA; /* PJ2-TXD8 */
@@ -205,26 +230,36 @@ void uart_init(void)
 #ifdef TARGET_rx71m
     /* Configure P90/P92 for UART */
     PORT_PMR(0x9) |= ((1 << 0) | (1 << 2));
+#elif defined(TARGET_rx24t)
+    /* Configure PD3/PD5 for UART */
+    PORT_PMR(0xD) |= ((1 << 3) | (1 << 5));
 #endif
 
     /* baud rate table: */
     /* divisor, abcs, bgdm, cks
-     * 8,       1,    1,    0
+     * 8,       1,    1,    0 (using this one for RX24T)
      * 16,      0,    1,    0
      * 32,      0,    0,    0
      * 64,      0,    1,    1
      * 128,     0,    0,    1
      * 256,     0,    1,    2
-     * 512,     0,    0,    2 (using this one)
+     * 512,     0,    0,    2 (using this one for others)
      * 1024,    0,    1,    3
      * 2048,    0,    0,    3
      */
 
+#ifdef TARGET_rx24t
+    /* 8-bit, 1-stop, no parity, cks=0, bgdm=1, abcs=1 (/8) */
+    SCI_BRR(DEBUG_UART_SCI) = DEBUG_UART_BRR;
+    SCI_SEMR(DEBUG_UART_SCI) |= (SCI_SEMR_ABCS | SCI_SEMR_BGDM);
+    SCI_SMR(DEBUG_UART_SCI) = SCI_SMR_CKS(0);
+#else
     /* 8-bit, 1-stop, no parity, cks=2 (/512), bgdm=0, abcs=0 */
     SCI_BRR(DEBUG_UART_SCI) = (PCLKB / (512 * DEBUG_BAUD_RATE)) - 1;
     SCI_SEMR(DEBUG_UART_SCI) &= ~SCI_SEMR_ABCS;
     SCI_SEMR(DEBUG_UART_SCI) &= ~SCI_SEMR_BGDM;
     SCI_SMR(DEBUG_UART_SCI) = SCI_SMR_CKS(2);
+#endif
     SCI_SCMR(DEBUG_UART_SCI) |= SCI_SCMR_CHR1;
     /* Enable TX/RX */
     SCI_SCR(DEBUG_UART_SCI) = (SCI_SCR_RE | SCI_SCR_TE);
@@ -281,9 +316,15 @@ void uart_read(char* buf, unsigned int sz)
 #else
 /* This function will switch to using on-chip HOCO through PLL */
 #define CFG_CKSEL 1 /* 0=LOCO, 1=HOCO, 2=Main, 3=Sub, 4=PLL */
+#ifdef TARGET_rx24t
+#define CFG_HCO_FRQ (32000000)
+#define CFD_PLL_DIV (2)
+#define CFG_PLL_MUL (SYS_CLK / (CFG_HCO_FRQ / 4))
+#else
 #define CFG_HCO_FRQ (16000000)
 #define CFD_PLL_DIV (0)
 #define CFG_PLL_MUL (SYS_CLK / (CFG_HCO_FRQ / 2))
+#endif
 #endif
 
 void hal_clk_init(void)
@@ -293,17 +334,26 @@ void hal_clk_init(void)
 
     PROTECT_OFF(); /* write protect off */
 
+#ifdef TARGET_rx24t
+    /* Move to high-speed operating mode */
+    while (SYS_OPCCR & SYS_OPCCR_OPCMTSF) { RX_NOP(); }
+    SYS_OPCCR = SYS_OPCCR_OPCM(0);
+    while (SYS_OPCCR & SYS_OPCCR_OPCMTSF) { RX_NOP(); }
+#endif
+
     /* ---- High Speed OSC (HOCO) ---- */
 #if CFG_CKSEL == 1
     if (SYS_HOCOCR & SYS_HOCOCR_HCSTP) {
+#ifndef TARGET_rx24t
         /* Turn on power to HOCO */
         SYS_HOCOPCR &= ~SYS_HOCOPCR_HOCOPCNT;
+#endif
         /* Stop HOCO */
         SYS_HOCOCR |= SYS_HOCOCR_HCSTP;
         /* Wait for HOCO to stop */
         while (SYS_OSCOVFSR & SYS_OSCOVFSR_HCOVF) { RX_NOP(); }
 
-        /* Set 16MHz -> CFG_HCO_FRQ */
+        /* Set 16MHz (or 32MHz for RX24T) -> CFG_HCO_FRQ */
         SYS_HOCOCR2 = SYS_HOCOCR2_HCFRQ(0);
 
         /* Enable HOCO */
@@ -313,10 +363,12 @@ void hal_clk_init(void)
     /* Wait for HOCO oscillator stabilization */
     while ((SYS_OSCOVFSR & SYS_OSCOVFSR_HCOVF) == 0) { RX_NOP(); }
 #else
+#ifndef TARGET_rx24t
     if (SYS_HOCOCR & SYS_HOCOCR_HCSTP) {
         /* Turn off power to HOCO */
         SYS_HOCOPCR |= SYS_HOCOPCR_HOCOPCNT;
     }
+#endif
 #endif
 
     /* ---- Main-Clock ---- */
@@ -338,6 +390,7 @@ void hal_clk_init(void)
     while ((SYS_OSCOVFSR & SYS_OSCOVFSR_MOOVF) != 0) { RX_NOP(); }
 #endif
 
+#ifndef TARGET_rx24t
     /* ---- RTC Clock ---- */
     if ((SYS_RSTSR1 & SYS_RSTSR1_CWSF) == 0) { /* cold start */
         /* Stop the RTC sub-clock */
@@ -352,15 +405,18 @@ void hal_clk_init(void)
         }
         if ((RTC_RCR3 & RTC_RCR3_RTCEN) != 0) { RX_NOP(); }
     }
+#endif
 
     /* ---- Sub-Clock OSC ---- */
 #if CFG_CKSEL == 3
     /* TODO: Add support for running from sub-clock */
 #else
+#ifndef TARGET_rx24t
     /* Stop the sub-clock */
     SYS_SOSCCR = SYS_SOSCCR_SOSTP;
     reg = SYS_SOSCCR; /* dummy read (required) */
     while ((SYS_OSCOVFSR & SYS_OSCOVFSR_SOOVF) != 0) { RX_NOP(); }
+#endif
 #endif
 
 #if CFG_CKSEL == 1 || CFG_CKSEL == 2
@@ -374,7 +430,7 @@ void hal_clk_init(void)
     /* convert multiplier to STC value */
     #define PLL_MUL_STC ((CFG_PLL_MUL * 2) - 1)
     reg = (
-        SYS_PLLCR_PLIDIV(CFD_PLL_DIV) | /* no div */
+        SYS_PLLCR_PLIDIV(CFD_PLL_DIV) | /* divider */
         PLL_SRCSEL |                    /* clock source (0=main, 1=HOCO) */
         SYS_PLLCR_STC(PLL_MUL_STC)      /* multiplier */
     );
@@ -394,6 +450,9 @@ void hal_clk_init(void)
 #elif defined(TARGET_rx71m)
     SYS_MEMWAIT = SYS_MEMWAIT_MEMWAIT; /* required for ICLK > 120MHz */
     if (SYS_MEMWAIT == SYS_MEMWAIT_MEMWAIT) { RX_NOP(); }
+#elif defined(TARGET_rx24t)
+    FLASH_MEMWAIT = FLASH_MEMWAIT_MEMWAIT(2); /* (2=ICLK<=80MHZ) */
+    reg = FLASH_MEMWAIT;
 #else
     FLASH_ROMWT = FLASH_ROMWT_ROMWT(2); /* (1=50-100MHz, 2= >100MHz) */
     reg = FLASH_ROMWT;
@@ -411,6 +470,15 @@ void hal_clk_init(void)
         SYS_SCKCR_PCKD(2) | /* Peripheral Module Clock D (PCKD)=2: 1/4 = 60MHz */
         SYS_SCKCR_PSTOP1 |  /* BCLK Pin Output  (PSTOP1): 0=Disabled */
         SYS_SCKCR_PSTOP0    /* SDCLK Pin Output (PSTOP0): 0=Disabled */
+    );
+#elif defined(TARGET_rx24t)
+    reg = (
+        SYS_SCKCR_ICK(0)  | /* System Clock (ICK)=0:               1/1 = 80MHz */
+        SYS_SCKCR_FCK(2)  | /* Flash-IF Clock FCK=2:               1/4 = 20MHz */
+        SYS_SCKCR_PCKA(0) | /* Peripheral Module Clock A (PCKA)=0: 1/1 = 80MHz */
+        SYS_SCKCR_PCKB(1) | /* Peripheral Module Clock B (PCKB)=1: 1/2 = 40MHz */
+        SYS_SCKCR_BCK(1)  | /* Reserved b19-16: same value as PCKB */
+        SYS_SCKCR_PCKD(1)   /* Peripheral Module Clock D (PCKD)=1: 1/2 = 40MHz */
     );
 #elif SYS_CLK >= 240000000
     reg = (
@@ -440,8 +508,10 @@ void hal_clk_init(void)
     SYS_SCKCR = reg;
     reg = SYS_SCKCR; /* dummy read (required) */
 
-/* RX71M: UCK stays at its reset value 0001b while USB is unused */
-#if CFG_CKSEL == 2 && !defined(TARGET_rx71m) /* USB only on main clock */
+/* RX71M: UCK stays at its reset value 0001b while USB is unused.
+ * RX24T has no USB clock. */
+#if CFG_CKSEL == 2 && !defined(TARGET_rx71m) && \
+    !defined(TARGET_rx24t) /* USB only on main clock */
     /* USB Clock=4: 1/5 = 48MHz */
     SYS_SCKCR2 |= SYS_SCKCR2_UCK(4);
     reg = SYS_SCKCR2; /* dummy read (required) */
@@ -621,6 +691,24 @@ void hal_prepare_boot(void)
     while ((SYS_OSCOVFSR & SYS_OSCOVFSR_PLOVF) != 0) { RX_NOP(); }
     SYS_MOSCCR = SYS_MOSCCR_MOSTP;
     while ((SYS_OSCOVFSR & SYS_OSCOVFSR_MOOVF) != 0) { RX_NOP(); }
+    PROTECT_ON();
+#elif defined(TARGET_rx24t) && defined(WOLFBOOT_RESTORE_CLOCK)
+    /* Run from the LOCO with the PLL and HOCO stopped, so the
+     * application can set up its own clocks */
+    PROTECT_OFF();
+    SYS_LOCOCR = 0;
+    hal_delay_us(1); /* LOCO settling time */
+    SYS_SCKCR3 = SYS_SCKCR3_CKSEL(0);
+    if (SYS_SCKCR3 == 0) { RX_NOP(); }
+    SYS_SCKCR = 0;
+    if (SYS_SCKCR == 0) { RX_NOP(); }
+    /* No wait states only once ICLK is 32MHz or less */
+    FLASH_MEMWAIT = FLASH_MEMWAIT_MEMWAIT(0);
+    if (FLASH_MEMWAIT == 0) { RX_NOP(); }
+    SYS_PLLCR2 = SYS_PLLCR2_PLLEN;
+    while ((SYS_OSCOVFSR & SYS_OSCOVFSR_PLOVF) != 0) { RX_NOP(); }
+    SYS_HOCOCR = SYS_HOCOCR_HCSTP;
+    while ((SYS_OSCOVFSR & SYS_OSCOVFSR_HCOVF) != 0) { RX_NOP(); }
     PROTECT_ON();
 #endif
 }
