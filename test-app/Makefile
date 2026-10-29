@@ -648,6 +648,10 @@ ENTRY_POINT=`cat .entry-point-address`
 LSCRIPT:=../config/target-app.ld
 LSCRIPT_TEMPLATE:=$(ARCH).ld
 
+ifeq ($(TARGET),rx24t)
+  LSCRIPT_TEMPLATE:=$(ARCH)-$(TARGET).ld
+endif
+
 ifeq ($(TARGET),stm32f7)
   LSCRIPT_TEMPLATE=ARM-stm32f7.ld
   CFLAGS+=-DDUALBANK_SWAP
