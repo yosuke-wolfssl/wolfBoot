@@ -187,6 +187,10 @@ void hal_delay_us(uint32_t us);
 #define FLASH_FPMCR_FMS2 (1<<7)
 #define FLASH_FPMCR_RPDIS (1<<3) /* ROM P/E Disable: 0=enabled, 1=disabled */
 #define FLASH_FPMCR_LVPE (1<<6) /* Low Voltage P/E Mode Enable: 0=disabled, 1=enabled */
+#define FLASH_FPMCR_DISCHARGE1 (FLASH_FPMCR_FMS1 | FLASH_FPMCR_FMS0) /* FMS=011 */
+#define FLASH_FPMCR_DISCHARGE2 (FLASH_FPMCR_FMS2 | FLASH_FPMCR_FMS1 | FLASH_FPMCR_FMS0) /* FMS=111 */
+#define FLASH_FPMCR_CODE_PE (FLASH_FPMCR_FMS2 | FLASH_FPMCR_FMS0) /* FMS=101: ROM P/E mode */
+#define FLASH_FPMCR_READ FLASH_FPMCR_RPDIS /* FMS=000: read mode */
 
 #define FLASH_FASR (*(volatile uint8_t *)(FLASH_BASE + 0x104)) /* Flash Area Select Register */
 #define FLASH_FASR_EXS (1<<0) /* 0=User area or data area */
@@ -205,6 +209,7 @@ void hal_delay_us(uint32_t us);
 #define FLASH_FEARL (*(volatile uint16_t *)(FLASH_BASE + 0x118)) /* Flash Processing End Address Register L */
 #define FLASH_FEARH (*(volatile uint16_t *)(FLASH_BASE + 0x120)) /* Flash Processing End Address Register H */
 #define FLASH_FRESETR (*(volatile uint8_t *)(FLASH_BASE + 0x124)) /* Flash Reset Register */
+#define FLASH_FRESETR_FRESET (1<<0) /* 1=reset the sequencer */
 
 #define FLASH_FSTATR0 (*(volatile uint8_t *)(FLASH_BASE + 0x1F0)) /* Flash Status Register 0 */
 #define FLASH_FSTATR0_ERERR (1<<0) /* Erase Error Flag */
@@ -222,6 +227,7 @@ void hal_delay_us(uint32_t us);
 #define FLASH_FWB3 (*(volatile uint16_t *)(FLASH_BASE + 0x144)) /* Flash Write Buffer 3 */
 
 #define FLASH_FPR (*(volatile uint8_t *)(FLASH_BASE + 0x180)) /* Protection Unlock Register */
+#define FLASH_FPR_KEY (0xA5)
 #define FLASH_FPSR (*(volatile uint8_t *)(FLASH_BASE + 0x184)) /* Protection Unlock Status Register */
 #define FLASH_FPSR_PERR (1<<0) /* Protection Error Flag: 1=error */
 
@@ -337,6 +343,9 @@ void hal_delay_us(uint32_t us);
     #define SYS_MEMWAIT_MEMWAIT (1 << 0) /* 1=wait cycle, required for ICLK > 120MHz */
 #elif defined(TARGET_rx24t)
     #define FLASH_SIZE 0x40000UL /* 256KB */
+    #define FLASH_CF_BLOCK_SIZE 2048 /* erase block */
+    #define FLASH_CF_UNIT_SIZE  8    /* program unit */
+    #define FLASH_CF_PE_OFFSET  0x03E00000UL /* read address - P/E address */
 
     #define FLASH_MEMWAIT (*(volatile uint8_t *)(SYSTEM_BASE + 0x31))
     #define FLASH_MEMWAIT_MEMWAIT(n) ((n) << 0) /* 0=no wait, 1=ICLK<=64MHz, 2=ICLK<=80MHZ */
